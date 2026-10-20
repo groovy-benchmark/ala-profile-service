@@ -1,0 +1,50 @@
+arch: amd64
+os: linux
+dist: focal
+language: groovy
+addons:
+  mongodb: 5.0
+jdk:
+  - openjdk11
+
+branches:
+  only:
+    - master
+    - dev
+    - hotfix
+    - grails3
+    - grails4
+    - /^feature\/.*$/
+    - /^hotfix\/.*$/
+
+services:
+  - mongodb
+  - elasticsearch
+
+before_install:
+  - rm -f  $HOME/.gradle/caches/modules-2/modules-2.lock
+  - rm -fr $HOME/.gradle/caches/*/plugin-resolution/
+  - curl https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-7.16.3-amd64.deb -o elasticsearch.deb
+  - sudo dpkg -i --force-confnew elasticsearch.deb
+  - sudo chown -R elasticsearch:elasticsearch /etc/default/elasticsearch
+  - sudo sh -c 'echo ES_JAVA_OPTS=\"-Xmx256m -Xms256m\" >> /etc/default/elasticsearch'
+  - sudo service elasticsearch restart
+  - sudo journalctl -xe
+
+cache:
+  directories:
+    - $HOME/.m2
+    - $HOME/.gradle/caches/
+    - $HOME/.gradle/wrapper/
+
+script:
+  - ./gradlew clean
+  - ./gradlew check
+
+after_success:
+  - '[ "${TRAVIS_PULL_REQUEST}" = "false" ] && ./gradlew clean && travis_retry ./gradlew publish --stacktrace'
+
+env:
+  global:
+    - secure: afqIu7SQ/GoytD1WjbYDBok8+8YPEYIwOGWM2jtx5JW5qVD+qRZIWL5CY0MWZix28MVGjafbta3TRhM7SWPVpm+O9fnaKmW5BP3ywex/Imu9t4MSXbMY0FTXk5HArMSHXB78pfTjqVpsUey8m8gC64kecN+c+cpcNCT+MRkHL7Q=
+    - secure: WXXh59l5xUhIaMLbgCLE7b0AqCqN9Ms11r2YkU2SYg5z0pXeJVdbs7DX7oaE+OwOXyZOWnzugVbQv5USZ1v/FwDBNnr16jxXXGDT2+TL1myfS9YT+kj7zDf/OWtMzmebf5dj6OSi7/1qDQgCyElQZJIRpN8pENsC1qmDHPbEyMo=

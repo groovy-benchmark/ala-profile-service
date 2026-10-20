@@ -1,0 +1,8 @@
+node_modules
+
+# Program data
+images
+additional_images
+cookie.txt
+
+.DS_Store

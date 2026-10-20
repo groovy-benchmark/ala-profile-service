@@ -1,0 +1,217 @@
+buildscript {
+    repositories {
+        mavenLocal()
+        mavenCentral()
+        maven { url "https://plugins.gradle.org/m2/" }
+        maven { url "https://nexus.ala.org.au/content/groups/public/" }
+    }
+    dependencies {
+        classpath "org.apache.grails:grails-gradle-plugins:$grailsVersion"
+        classpath "cloud.wondrify:asset-pipeline-gradle:$assetPipelineVersion"
+    }
+}
+
+version "$profileServiceVersion"
+group "au.org.ala"
+boolean inplace = Boolean.valueOf(project.findProperty('inplace') ?: 'false')
+
+apply plugin: "eclipse"
+apply plugin: "idea"
+apply plugin: "war"
+apply plugin: "groovy"
+apply plugin: "org.apache.grails.gradle.grails-web"
+apply plugin: "cloud.wondrify.asset-pipeline"
+apply plugin: "org.apache.grails.gradle.grails-gsp"
+apply from: "${project.projectDir}/gradle/publish.gradle"
+
+sourceCompatibility = '17'
+targetCompatibility = '17'
+
+repositories {
+    mavenLocal()
+    maven { url "https://repo.grails.org/grails/core" }
+    maven { url "https://nexus.ala.org.au/content/groups/public/" }
+    maven { url "https://nexus.ala.org.au/content/repositories/snapshots" }
+    mavenCentral()
+}
+
+// Groovy 4 artifacts moved from org.codehaus.groovy to org.apache.groovy.
+// Old transitive requests (http-builder, etc.) are retargeted here; the Grails BOM
+// constraints then upgrade them to the managed Groovy 4 version.
+configurations.configureEach {
+    resolutionStrategy.eachDependency { DependencyResolveDetails details ->
+        // groovy-bom is exempt: retargeting it to org.apache.groovy:groovy-bom turns a
+        // pom-only module into a platform-only module, which breaks library resolution
+        if (details.requested.group == 'org.codehaus.groovy' && details.requested.name != 'groovy-bom') {
+            details.useTarget(group: 'org.apache.groovy', name: details.requested.name, version: details.requested.version)
+            details.because 'Groovy 4 coordinates moved to org.apache.groovy'
+        }
+        // Spring Boot 3.5 BOM manages Elasticsearch 8.x; keep the 7.17 client used by
+        // grails-elasticsearch 5.0.0 and elasticsearch-rest-high-level-client.
+        if (details.requested.group in ['org.elasticsearch', 'org.elasticsearch.client', 'org.elasticsearch.plugin']) {
+            details.useVersion elasticsearchVersion
+            details.because 'Pin Elasticsearch client stack to 7.17 for grails-elasticsearch'
+        }
+    }
+}
+
+ext['elasticsearch.version'] = elasticsearchVersion
+
+springBoot {
+    buildInfo()
+}
+
+dependencies {
+    developmentOnly("org.springframework.boot:spring-boot-devtools")
+    developmentOnly "net.java.dev.jna:jna"
+    developmentOnly "io.methvin:directory-watcher"
+    console "org.apache.grails:grails-console"
+
+    implementation "org.springframework.boot:spring-boot-starter-logging"
+    implementation "org.springframework.boot:spring-boot-starter-validation"
+    implementation "org.springframework.boot:spring-boot-autoconfigure"
+    implementation "org.apache.grails:grails-core"
+    implementation "org.springframework.boot:spring-boot-starter-actuator"
+    implementation "org.springframework.boot:spring-boot-starter-tomcat"
+    implementation "org.apache.grails:grails-logging"
+    implementation "org.apache.grails:grails-web-boot"
+    implementation "org.apache.grails:grails-rest-transforms"
+    implementation "org.apache.grails:grails-databinding"
+    implementation "org.apache.grails:grails-services"
+    implementation "org.apache.grails:grails-url-mappings"
+    implementation "org.apache.grails:grails-interceptors"
+    // Sitemesh 2 layout support moved out of grails-gsp into its own plugin in Grails 7
+    implementation "org.apache.grails:grails-layout"
+    implementation "org.apache.grails:grails-gsp"
+    implementation "org.apache.grails:grails-cache"
+    implementation "org.apache.grails:grails-async"
+    implementation "org.apache.grails.async:grails-async-gpars"
+    implementation "org.apache.grails:grails-data-mongodb"
+    // GORM only registers its Open Session In View interceptor when
+    // OpenSessionInViewInterceptor is on the classpath; without it lazy associations
+    // cannot be loaded while rendering, since no session is bound to the request thread.
+    implementation "org.apache.grails.data:grails-datastore-web"
+    profile "org.apache.grails.profiles:web"
+
+    implementation "cloud.wondrify:asset-pipeline-core:$assetPipelineVersion"
+    implementation "cloud.wondrify:asset-pipeline-grails:$assetPipelineVersion"
+
+    testImplementation "org.mockito:mockito-core"
+    testImplementation "org.apache.grails:grails-testing-support-web"
+    testImplementation "org.apache.grails:grails-testing-support-datamapping"
+    testImplementation "org.apache.grails:grails-geb"
+    testImplementation "org.seleniumhq.selenium:selenium-remote-driver:$seleniumVersion"
+    testImplementation "org.seleniumhq.selenium:selenium-api:$seleniumVersion"
+    testImplementation "org.seleniumhq.selenium:selenium-support:$seleniumVersion"
+    testRuntimeOnly "org.seleniumhq.selenium:selenium-chrome-driver:$seleniumVersion"
+    testRuntimeOnly "org.seleniumhq.selenium:selenium-firefox-driver:$seleniumVersion"
+
+    runtimeOnly "jakarta.xml.bind:jakarta.xml.bind-api:4.0.2"
+    runtimeOnly "org.glassfish.jaxb:jaxb-runtime:4.0.5"
+
+    implementation "org.grails.plugins:ala-auth:$alaSecurityLibsVersion"
+    implementation "au.org.ala:userdetails-service-client:$alaSecurityLibsVersion"
+    implementation "org.grails.plugins:ala-ws-security-plugin:$alaSecurityLibsVersion"
+    implementation("org.grails.plugins:ala-ws-plugin:$alaSecurityLibsVersion") {
+        exclude module: 'asset-pipeline-grails'
+        exclude module: 'xerces'
+    }
+
+    // ala-ws-plugin only brings http-builder in at runtime, but WebService's public API references
+    // HTTPBuilder, so it must be on the compile classpath for specs that mock WebService.
+    implementation "org.codehaus.groovy.modules.http-builder:http-builder:0.7.1"
+
+    implementation 'au.org.ala:ala-name-matching-search:4.2'
+    implementation 'au.org.ala:ala-name-matching:4.2'
+    implementation "com.xlson.groovycsv:groovycsv:1.0"
+    implementation "com.google.guava:guava:33.0.0-jre"
+    implementation 'com.googlecode.owasp-java-html-sanitizer:owasp-java-html-sanitizer:20240325.1'
+    implementation "com.itextpdf:itextpdf:5.5.1"
+    implementation "org.imgscalr:imgscalr-lib:4.2"
+    implementation "com.google.code.gson:gson:2.8.6"
+
+    implementation "org.grails.plugins:grails-mail:5.0.3"
+    implementation "xml-apis:xml-apis:1.4.01"
+
+    implementation "org.elasticsearch.client:elasticsearch-rest-high-level-client:${elasticsearchVersion}"
+    if (!inplace) {
+        // Official Grails 7 plugin; exclude Hibernate because this app uses GORM Mongo only.
+        implementation('org.grails.plugins:grails-elasticsearch:5.0.0') {
+            exclude group: 'org.apache.grails', module: 'grails-data-hibernate5'
+            exclude group: 'org.apache.grails.data', module: 'grails-data-hibernate5-core'
+            exclude group: 'org.hibernate', module: 'hibernate-ehcache'
+            exclude group: 'org.hibernate', module: 'hibernate-core-jakarta'
+        }
+    }
+
+    implementation "org.grails.plugins:dropwizard-metrics:2.0.0.RC1"
+    implementation "org.apache.grails:grails-quartz:4.0.1"
+    implementation 'org.apache.groovy:groovy-dateutil'
+    runtimeOnly("org.springframework.boot:spring-boot-properties-migrator")
+}
+
+configurations.configureEach {
+    exclude module: 'grails-datastore-simple'
+}
+
+bootRun {
+    ignoreExitValue true
+    jvmArgs(
+        '-Dspring.output.ansi.enabled=always',
+        '-XX:TieredStopAtLevel=1',
+        '-Xmx1024m')
+    sourceResources sourceSets.main
+    String springProfilesActive = 'spring.profiles.active'
+    systemProperty springProfilesActive, System.getProperty(springProfilesActive)
+}
+
+bootJar {
+    enabled = true
+    archiveClassifier = 'exec'
+    launchScript()
+}
+
+assemble {
+    dependsOn bootJar
+}
+
+bootWar {
+    enabled = false
+}
+
+publish {
+    dependsOn assemble
+}
+
+tasks.withType(GroovyCompile) {
+    configure(groovyOptions) {
+        forkOptions.jvmArgs = ['-Xmx1024m']
+    }
+}
+
+tasks.withType(Test) {
+    useJUnitPlatform()
+    systemProperty "geb.env", System.getProperty('geb.env')
+    systemProperty "geb.build.reportsDir", reporting.file("geb/integrationTest")
+    if (!System.getenv().containsKey('GITHUB_ACTIONS')) {
+        systemProperty 'webdriver.chrome.driver', System.getProperty('webdriver.chrome.driver')
+        systemProperty 'webdriver.gecko.driver', System.getProperty('webdriver.gecko.driver')
+    } else {
+        systemProperty 'webdriver.chrome.driver', "${System.getenv('CHROMEWEBDRIVER')}/chromedriver"
+        systemProperty 'webdriver.gecko.driver', "${System.getenv('GECKOWEBDRIVER')}/geckodriver"
+    }
+}
+
+assets {
+    minifyJs = true
+    minifyCss = true
+}
+
+if (inplace) {
+    grails {
+        exploded = true
+        plugins {
+            implementation(project(':elasticsearch'))
+        }
+    }
+}

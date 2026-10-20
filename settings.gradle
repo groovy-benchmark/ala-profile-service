@@ -1,0 +1,5 @@
+rootProject.name = 'profile-service'
+if (settings.hasProperty('inplace') && Boolean.valueOf(settings.inplace)) {
+    include ':elasticsearch'
+    project(':elasticsearch').projectDir = new File(settingsDir, '../../elasticsearch-grails-plugin')
+}

@@ -1,0 +1,9 @@
+{
+  "name": "profiles-image-upload",
+  "dependencies": {
+    "axios": "^1.12.0",
+    "csvtojson": "^2.0.10",
+    "form-data": "^4.0.4",
+    "yargs": "^17.7.2"
+  }
+}
