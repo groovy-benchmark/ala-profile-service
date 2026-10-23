@@ -11,3 +11,10 @@ out/
 .settings
 .classpath
 /logs/
+
+# Claude
+.claude/
+CLAUDE.md
+CLAUDE-SECURITY-*/
+claude_security_results/
+/*.sarif
